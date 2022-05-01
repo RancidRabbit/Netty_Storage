@@ -12,7 +12,13 @@ import io.netty.handler.codec.string.StringEncoder;
 import ru.gb.storage.commons.handler.JsonDecoder;
 import ru.gb.storage.commons.handler.JsonEncoder;
 import ru.gb.storage.commons.message.AuthMessage;
+import ru.gb.storage.commons.message.FileContentMessage;
+import ru.gb.storage.commons.message.FileRequestMessage;
 import ru.gb.storage.commons.message.Message;
+
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.RandomAccessFile;
 
 public class Client {
 
@@ -36,14 +42,31 @@ public class Client {
                                     new LengthFieldBasedFrameDecoder(1024 * 1024, 0, 3, 0, 3),
                                     //Перед отправкой добавляет в начало сообщение 3 байта с длиной сообщения
                                     new LengthFieldPrepender(3),
-                                    new StringDecoder(),
-                                    new StringEncoder(),
                                     new JsonDecoder(),
                                     new JsonEncoder(),
                                     new SimpleChannelInboundHandler<Message>() {
                                         @Override
+                                        public void channelActive(ChannelHandlerContext ctx) throws Exception {
+                                            final FileRequestMessage message = new FileRequestMessage();
+                                            message.setPath("C:\\NettyTest\\Asterios.zip");
+                                            ctx.writeAndFlush(message);
+                                        }
+
+                                        @Override
                                         protected void channelRead0(ChannelHandlerContext ctx, Message msg) {
-                                            System.out.println("receive msg " + msg);
+                                            if (msg instanceof FileContentMessage) {
+                                                System.out.println("Income new file");
+                                                FileContentMessage fcm = (FileContentMessage) msg;
+                                                try (final RandomAccessFile accessFile = new RandomAccessFile("C:\\NettyTestDownload\\1.zip", "rw")) {
+                                                    accessFile.seek(fcm.getStartPosition());
+                                                    accessFile.write(fcm.getContent());
+                                                    if (fcm.isLast()) {
+                                                        ctx.close();
+                                                    }
+                                                } catch (IOException e) {
+                                                    throw new RuntimeException(e);
+                                                }
+                                            }
                                         }
                                     }
                             );
@@ -54,15 +77,6 @@ public class Client {
 
             Channel channel = bootstrap.connect("localhost", 9090).sync().channel();
 
-            while (channel.isActive()) {
-                AuthMessage authMessage = new AuthMessage();
-                authMessage.setLogin("login");
-                authMessage.setPassword("qwerty");
-                channel.writeAndFlush(authMessage);
-
-
-                Thread.sleep(5000);
-            }
 
             channel.closeFuture().sync();
         } catch (InterruptedException e) {
