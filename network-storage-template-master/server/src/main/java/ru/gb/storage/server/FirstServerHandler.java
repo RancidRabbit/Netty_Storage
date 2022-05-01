@@ -2,13 +2,16 @@ package ru.gb.storage.server;
 
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
-import ru.gb.storage.commons.message.AuthMessage;
-import ru.gb.storage.commons.message.DateMessage;
-import ru.gb.storage.commons.message.Message;
-import ru.gb.storage.commons.message.TextMessage;
+import ru.gb.storage.commons.message.*;
 import ru.gb.storage.commons.Constant;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+
 public class FirstServerHandler extends SimpleChannelInboundHandler<Message> {
+    long counter = 0;
     @Override
     public void channelActive(ChannelHandlerContext ctx) {
         System.out.println("New active channel");
@@ -35,6 +38,32 @@ public class FirstServerHandler extends SimpleChannelInboundHandler<Message> {
             TextMessage authAnswer = new TextMessage();
             authAnswer.setText("Авторизация пройдена");
             ctx.writeAndFlush(authAnswer);
+        }
+        if (msg instanceof FileRequestMessage) {
+            System.out.println("Запрос на отправку файла");
+            FileRequestMessage frm = (FileRequestMessage) msg;
+            final File file = new File(frm.getPath());
+            try (final RandomAccessFile accessFile = new RandomAccessFile(file, "r")) {
+                while (accessFile.getFilePointer() != accessFile.length()) {
+                    final byte[] fileContent;
+                    final long available = accessFile.length() - accessFile.getFilePointer();
+                    if (available > 64 * 1024) {
+                        fileContent = new byte[64 * 1024];
+                    } else {
+                        fileContent = new byte[(int) available];
+                    }
+                    final FileContentMessage message = new FileContentMessage();
+                    message.setStartPosition(accessFile.getFilePointer());
+                    accessFile.read(fileContent);
+                    message.setContent(fileContent);
+                    message.setLast(accessFile.getFilePointer() == accessFile.length());
+                    ctx.writeAndFlush(message);
+                    counter ++;
+                    System.out.println("Пакетов отправлено + " + counter);
+                }
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
         }
     }
 
