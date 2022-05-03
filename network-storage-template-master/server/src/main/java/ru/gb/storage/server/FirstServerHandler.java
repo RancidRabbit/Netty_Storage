@@ -1,17 +1,18 @@
 package ru.gb.storage.server;
 
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import ru.gb.storage.commons.message.*;
 import ru.gb.storage.commons.Constant;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.RandomAccessFile;
+import java.io.*;
 
 public class FirstServerHandler extends SimpleChannelInboundHandler<Message> {
+    private RandomAccessFile accessFile;
     long counter = 0;
+
     @Override
     public void channelActive(ChannelHandlerContext ctx) {
         System.out.println("New active channel");
@@ -21,7 +22,7 @@ public class FirstServerHandler extends SimpleChannelInboundHandler<Message> {
     }
 
     @Override
-    protected void channelRead0(ChannelHandlerContext ctx, Message msg) {
+    protected void channelRead0(ChannelHandlerContext ctx, Message msg) throws IOException {
         if (msg instanceof TextMessage) {
             TextMessage message = (TextMessage) msg;
             System.out.println("incoming text message: " + message.getText());
@@ -43,26 +44,39 @@ public class FirstServerHandler extends SimpleChannelInboundHandler<Message> {
             System.out.println("Запрос на отправку файла");
             FileRequestMessage frm = (FileRequestMessage) msg;
             final File file = new File(frm.getPath());
-            try (final RandomAccessFile accessFile = new RandomAccessFile(file, "r")) {
-                while (accessFile.getFilePointer() != accessFile.length()) {
-                    final byte[] fileContent;
-                    final long available = accessFile.length() - accessFile.getFilePointer();
-                    if (available > 64 * 1024) {
-                        fileContent = new byte[64 * 1024];
-                    } else {
-                        fileContent = new byte[(int) available];
-                    }
-                    final FileContentMessage message = new FileContentMessage();
-                    message.setStartPosition(accessFile.getFilePointer());
-                    accessFile.read(fileContent);
-                    message.setContent(fileContent);
-                    message.setLast(accessFile.getFilePointer() == accessFile.length());
-                    ctx.writeAndFlush(message);
-                    counter ++;
-                    System.out.println("Пакетов отправлено + " + counter);
+            accessFile = new RandomAccessFile(file, "r");
+            sendFile(ctx);
+
+        }
+
+    }
+
+    private void sendFile(ChannelHandlerContext ctx) throws IOException {
+        if (accessFile != null) {
+            final byte[] fileContent;
+            final long available = accessFile.length() - accessFile.getFilePointer();
+            if (available > 64 * 1024) {
+                fileContent = new byte[64 * 1024];
+            } else {
+                fileContent = new byte[(int) available];
+            }
+            final FileContentMessage message = new FileContentMessage();
+            message.setStartPosition(accessFile.getFilePointer()); /* Ставим метку для того, что бы клиент смог поставить часть файла в нужное место */
+            accessFile.read(fileContent);
+            message.setContent(fileContent);
+            final boolean last = accessFile.getFilePointer() == accessFile.length();
+            message.setLast(last);
+            counter++;
+            System.out.println("Пакетов отправлено + " + counter);
+            ctx.channel().writeAndFlush(message).addListener((ChannelFutureListener) channelFuture -> {
+                if (!last) {
+                    sendFile(ctx);
                 }
-            } catch (IOException e) {
-                throw new RuntimeException(e);
+
+            });
+            if (last) {
+                accessFile.close();
+                accessFile = null;
             }
         }
     }
@@ -74,7 +88,10 @@ public class FirstServerHandler extends SimpleChannelInboundHandler<Message> {
     }
 
     @Override
-    public void channelInactive(ChannelHandlerContext ctx) {
+    public void channelInactive(ChannelHandlerContext ctx) throws IOException {
         System.out.println("client disconnect");
+        if (accessFile != null) {
+            accessFile.close();
+        }
     }
 }

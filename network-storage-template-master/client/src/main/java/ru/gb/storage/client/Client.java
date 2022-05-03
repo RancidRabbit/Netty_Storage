@@ -48,7 +48,7 @@ public class Client {
                                         @Override
                                         public void channelActive(ChannelHandlerContext ctx) throws Exception {
                                             final FileRequestMessage message = new FileRequestMessage();
-                                            message.setPath("C:\\NettyTest\\Asterios.zip");
+                                            message.setPath("C:\\NettyTest\\video.mp4");
                                             ctx.writeAndFlush(message);
                                         }
 
@@ -57,7 +57,7 @@ public class Client {
                                             if (msg instanceof FileContentMessage) {
                                                 System.out.println("Income new file");
                                                 FileContentMessage fcm = (FileContentMessage) msg;
-                                                try (final RandomAccessFile accessFile = new RandomAccessFile("C:\\NettyTestDownload\\1.zip", "rw")) {
+                                                try (final RandomAccessFile accessFile = new RandomAccessFile("C:\\NettyTestDownload\\v.mp4", "rw")) {
                                                     accessFile.seek(fcm.getStartPosition());
                                                     accessFile.write(fcm.getContent());
                                                     if (fcm.isLast()) {
