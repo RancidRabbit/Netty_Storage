@@ -26,7 +26,7 @@ import java.util.Scanner;
 
 public class Client {
 
-    Channel channel;
+   private Channel channel;
 
     public static void main(String[] args) {
         new Client().start();
@@ -53,8 +53,9 @@ public class Client {
                                     new JsonEncoder(),
                                     new SimpleChannelInboundHandler<Message>() {
                                         Scanner sc = new Scanner(System.in);
-                                        private String writeTo;
-
+                                        private String download;
+                                        private String userPosition;
+                                        private String upload;
                                         @Override
                                         public void channelActive(ChannelHandlerContext ctx) throws Exception {
                                             new Thread(() -> {
@@ -105,10 +106,19 @@ public class Client {
                                                              if (s.startsWith("download")) {
                                                                  final String[] split = s.split(" ");
                                                                  final String file = split[1];
-                                                                 writeTo = split[2];
+                                                                 download = split[2];
                                                                  FileRequestMessage frm = new FileRequestMessage();
                                                                  frm.setPath(file);
                                                                  ctx.writeAndFlush(frm);
+                                                             }
+                                                             if (s.startsWith("upload")) {
+                                                                 final String[] strings = s.split(" ");
+                                                                 final String from = strings[1];
+                                                                 final String fileName = strings[2];
+                                                                 upload = userPosition.concat("\\").concat(fileName);
+                                                                 FileUploadMessage upload = new FileUploadMessage();
+                                                                 upload.setLoadFrom(from);
+                                                                 ctx.writeAndFlush(upload);
                                                              }
                                                              else  {
                                                                 System.out.println("Not such command");
@@ -124,22 +134,32 @@ public class Client {
                                         @Override
                                         protected void channelRead0(ChannelHandlerContext ctx, Message msg) {
                                             /* Передавать File через FileContentMessage ? */
-                                            if (msg instanceof FileContentMessage) {
-                                                downloadFile(ctx, msg, writeTo);
+                                            if (msg instanceof FileContentMessage && download != null) {
+                                                downloadFile(ctx, msg, download);
                                             }
+                                            if (msg instanceof FileContentMessage) {
+                                                downloadFile(ctx,msg, upload);
+                                            }
+
                                             if (msg instanceof TextMessage) {
                                                 readText(ctx, msg);
                                             }
+                                            if (msg instanceof CurrentPositionMessage) {
+                                                CurrentPositionMessage position = (CurrentPositionMessage) msg;
+                                                userPosition = position.getCurrentPos();
+                                            }
+
                                         }
 
                                         public void downloadFile(ChannelHandlerContext ctx, Message msg, String to) {
-
-                                            System.out.println("Идет передача файлов");
 
                                             FileContentMessage fcm = (FileContentMessage) msg;
                                             try (final RandomAccessFile accessFile = new RandomAccessFile(to, "rw")) {
                                                 accessFile.seek(fcm.getStartPosition());
                                                 accessFile.write(fcm.getContent());
+                                                if (fcm.isLast()) {
+                                                    download = null;
+                                                }
                                             } catch (IOException e) {
                                                 System.out.println(Constant.ANSI_RED + "Укажите действующую директорию для копирования и название для файла" + "\n" +
                                                                    "C:\\MyFiles\\Read.txt" + Constant.ANSI_RESET);
@@ -156,11 +176,12 @@ public class Client {
                                             userMessage.setLogin(login);
                                             userMessage.setPassword(password);
                                             userMessage.setAuth("Y");
-                                            userMessage.setFiles(new ArrayList<>());
-                                            Path userFile = Paths.get("user.json");
-                                            Files.createFile(userFile);
+                                            Path userFile = Paths.get(userMessage.getLogin().concat(".json"));
+                                            if (!Files.exists(userFile)) {
+                                                Files.createFile(userFile);
+                                            }
                                             ctx.writeAndFlush(userMessage);
-                                            System.out.println("Register successfully");
+                                            System.out.println(login + ", успешно зарегестрирован!");
                                         }
 
                                         public void authUser(ChannelHandlerContext ctx) {

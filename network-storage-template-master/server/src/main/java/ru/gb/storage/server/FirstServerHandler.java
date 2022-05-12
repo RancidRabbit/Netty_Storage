@@ -4,22 +4,27 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.resolver.dns.MultiDnsServerAddressStreamProvider;
 import ru.gb.storage.commons.message.AuthMessage;
+import ru.gb.storage.commons.message.CurrentPositionMessage;
 import ru.gb.storage.commons.message.FileContentMessage;
 import ru.gb.storage.commons.message.FileRequestMessage;
+import ru.gb.storage.commons.message.FileUploadMessage;
 import ru.gb.storage.commons.message.HelpMessage;
 import ru.gb.storage.commons.message.Message;
 import ru.gb.storage.commons.message.TextMessage;
 import ru.gb.storage.commons.message.UserMessage;
-import ru.gb.storage.commons.message.mkdirMessage;
 import ru.gb.storage.commons.message.lsMessage;
+import ru.gb.storage.commons.message.mkdirMessage;
 import ru.gb.storage.commons.message.rmMessage;
+import ru.gb.storage.server.Users;
 
 
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -30,8 +35,10 @@ public class FirstServerHandler extends SimpleChannelInboundHandler<Message> {
     private RandomAccessFile accessFile;
     private long counter = 0;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private File userFile = new File("user.json");
+    private File userFile;
     private Path root;
+    private String currentPos;
+    private Users users;
 
 
     @Override
@@ -46,10 +53,15 @@ public class FirstServerHandler extends SimpleChannelInboundHandler<Message> {
     protected void channelRead0(ChannelHandlerContext ctx, Message msg) throws IOException {
         if (msg instanceof UserMessage) {
             UserMessage message = (UserMessage) msg;
-            OBJECT_MAPPER.writeValue(new FileWriter("user.json"), message);
+            userFile = new File(message.getLogin().concat(".json"));
+            OBJECT_MAPPER.writeValue(new FileWriter(userFile), message);
             root = Files.createDirectories(Paths.get("C:\\Server\\Storage").resolve(Paths.get(message.getLogin())));
             message.setRootDir(root.toString());
-            OBJECT_MAPPER.writeValue(new FileWriter("user.json"), message);
+            OBJECT_MAPPER.writeValue(new FileWriter(userFile), message);
+            currentPos = root.toString();
+            CurrentPositionMessage position = new CurrentPositionMessage();
+            position.setCurrentPos(currentPos);
+            ctx.writeAndFlush(position);
         }
 
         if (msg instanceof HelpMessage) {
@@ -70,7 +82,7 @@ public class FirstServerHandler extends SimpleChannelInboundHandler<Message> {
         }
 
         if (msg instanceof AuthMessage) {
-            if (!Files.exists(Paths.get("user.json"))) {
+            if (!Files.exists(Paths.get("USERS.json"))) {
                 TextMessage failMessage = new TextMessage();
                 failMessage.setText("Нет зарегестрированных пользователей");
                 ctx.writeAndFlush(failMessage);
@@ -78,19 +90,23 @@ public class FirstServerHandler extends SimpleChannelInboundHandler<Message> {
                 AuthMessage message = (AuthMessage) msg;
                 final String incomePassword = message.getPassword();
                 final String incomeLogin = message.getLogin();
-                final UserMessage user1 = OBJECT_MAPPER.readValue(userFile, UserMessage.class);
+                final Users users = OBJECT_MAPPER.readValue(new File("USERS.json"), Users.class);
                 TextMessage authMessage = new TextMessage();
-                if (incomeLogin.matches(user1.getLogin()) && incomePassword.matches(user1.getPassword())) {
-                    authMessage.setText("Добро пожаловать, " + user1.getLogin());
-                    user1.setAuth("Y");
-                    OBJECT_MAPPER.writeValue(new FileWriter("user.json"), user1);
-                    root = Paths.get(user1.getRootDir());
-                } else {
-                    authMessage.setText("Неверный логин или пароль");
+                for (UserMessage user : users.getUsers()) {
+                    if (incomeLogin.matches(user.getLogin()) && incomePassword.matches(user.getPassword())) {
+                        authMessage.setText("Добро пожаловать, " + user.getLogin());
+                        user.setAuth("Y");
+                        /* OBJECT_MAPPER.writeValue(new FileWriter("user.json"), user);*/
+                        root = Paths.get(user.getRootDir());
+                        currentPos = root.toString();
+                        CurrentPositionMessage position = new CurrentPositionMessage();
+                        position.setCurrentPos(currentPos);
+                        break;
+                    }
+                    else authMessage.setText("Неверный логин или пароль");
                 }
                 ctx.writeAndFlush(authMessage);
             }
-
         }
 
         if (msg instanceof FileRequestMessage) {
@@ -102,6 +118,15 @@ public class FirstServerHandler extends SimpleChannelInboundHandler<Message> {
             accessFile = new RandomAccessFile(toFile, "r");
             sendFile(ctx);
         }
+
+        if (msg instanceof FileUploadMessage) {
+            FileUploadMessage upload = (FileUploadMessage) msg;
+            final String load = upload.getLoadFrom();
+            final File loadFrom = Paths.get(load).toFile();
+            accessFile = new RandomAccessFile(loadFrom, "r");
+            sendFile(ctx);
+        }
+
 
         if (msg instanceof mkdirMessage) {
             TextMessage message = new TextMessage();
@@ -116,7 +141,6 @@ public class FirstServerHandler extends SimpleChannelInboundHandler<Message> {
                 if (!Files.exists(destination)) {
                     Files.createDirectories(destination);
                     message.setText("Создана директория: " + destination);
-                    user.getFiles().add(file);
                     OBJECT_MAPPER.writeValue(new FileWriter("user.json"), user);
                 } else {
                     message.setText("Директория уже существует!");
@@ -146,7 +170,7 @@ public class FirstServerHandler extends SimpleChannelInboundHandler<Message> {
             TextMessage message = new TextMessage();
             if (!Files.exists(Paths.get("user.json"))) {
                 message.setText("Недостаточно прав для использования команды");
-            } else  {
+            } else {
                 rmMessage rm = (rmMessage) msg;
                 final String s = rm.getPath();
                 final Path path = Paths.get(s);
@@ -163,11 +187,8 @@ public class FirstServerHandler extends SimpleChannelInboundHandler<Message> {
             }
 
 
-            }
         }
-
-
-
+    }
 
 
     private void sendFile(ChannelHandlerContext ctx) throws IOException {
@@ -227,10 +248,14 @@ public class FirstServerHandler extends SimpleChannelInboundHandler<Message> {
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws IOException {
-        System.out.println("client disconnect");
+        System.out.println("Клиент отключился");
         final UserMessage user = OBJECT_MAPPER.readValue(userFile, UserMessage.class);
         user.setAuth("N");
-        OBJECT_MAPPER.writeValue(new FileWriter("user.json"), user);
+        OBJECT_MAPPER.writeValue(new FileWriter(userFile), user);
+        final Users u = OBJECT_MAPPER.readValue(new File("USERS.json"), Users.class);
+        u.getUsers().add(user);
+        OBJECT_MAPPER.writeValue(new FileWriter("USERS.json"), u);
+        Files.delete(userFile.toPath());
         if (accessFile != null) {
             accessFile.close();
         }

@@ -12,16 +12,13 @@ public class UserMessage extends Message {
 
     private String password;
 
-    private List<File> files;
-
     private String rootDir;
 
     private String auth;
 
-    public UserMessage(String login, String password, List<File> files, String auth) {
+    public UserMessage(String login, String password, String auth) {
         this.login = login;
         this.password = password;
-        this.files = files;
         this.auth = auth;
 
     }
@@ -54,15 +51,6 @@ public class UserMessage extends Message {
     public void setAuth(String auth) {
         this.auth = auth;
     }
-
-    public List<File> getFiles() {
-        return files;
-    }
-
-    public void setFiles(List<File> files) {
-        this.files = files;
-    }
-
     public String getRootDir() {
         return rootDir;
     }
