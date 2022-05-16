@@ -25,10 +25,8 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.lang.reflect.Field;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
+import java.nio.file.*;
+import java.util.Collections;
 import java.util.List;
 
 public class FirstServerHandler extends SimpleChannelInboundHandler<Message> {
@@ -38,14 +36,14 @@ public class FirstServerHandler extends SimpleChannelInboundHandler<Message> {
     private File userFile;
     private Path root;
     private String currentPos;
-    private Users users;
+    private boolean isAuth = false;
 
 
     @Override
     public void channelActive(ChannelHandlerContext ctx) {
-        System.out.println("New active channel");
+        System.out.println("Новый клиент подключился");
         TextMessage answer = new TextMessage();
-        answer.setText("Please enter a command, use [help] to see the list of available commands");
+        answer.setText("Вызовите [help] для списка доступных команд");
         ctx.writeAndFlush(answer);
     }
 
@@ -59,21 +57,18 @@ public class FirstServerHandler extends SimpleChannelInboundHandler<Message> {
             message.setRootDir(root.toString());
             OBJECT_MAPPER.writeValue(new FileWriter(userFile), message);
             currentPos = root.toString();
+            isAuth = true;
             CurrentPositionMessage position = new CurrentPositionMessage();
             position.setCurrentPos(currentPos);
+
             ctx.writeAndFlush(position);
         }
 
         if (msg instanceof HelpMessage) {
             TextMessage message = new TextMessage();
-            if (Files.exists(Paths.get("user.json"))) {
-                final UserMessage user = OBJECT_MAPPER.readValue(userFile, UserMessage.class);
-                if (user.getAuth().matches("Y")) {
-                    authMsg(ctx, message);
-                } else notAuthMsg(ctx, message);
-            } else {
-                notAuthMsg(ctx, message);
-            }
+            if (isAuth == true) {
+                authMsg(ctx, message);
+            } else notAuthMsg(ctx, message);
         }
         if (msg instanceof TextMessage) {
             TextMessage message = (TextMessage) msg;
@@ -82,11 +77,15 @@ public class FirstServerHandler extends SimpleChannelInboundHandler<Message> {
         }
 
         if (msg instanceof AuthMessage) {
+            TextMessage failMessage = new TextMessage();
             if (!Files.exists(Paths.get("USERS.json"))) {
-                TextMessage failMessage = new TextMessage();
                 failMessage.setText("Нет зарегестрированных пользователей");
                 ctx.writeAndFlush(failMessage);
-            } else {
+            } if (isAuth == true) {
+               failMessage.setText("Вы уже авторизированы");
+               ctx.writeAndFlush(failMessage);
+            }
+            else {
                 AuthMessage message = (AuthMessage) msg;
                 final String incomePassword = message.getPassword();
                 final String incomeLogin = message.getLogin();
@@ -95,80 +94,87 @@ public class FirstServerHandler extends SimpleChannelInboundHandler<Message> {
                 for (UserMessage user : users.getUsers()) {
                     if (incomeLogin.matches(user.getLogin()) && incomePassword.matches(user.getPassword())) {
                         authMessage.setText("Добро пожаловать, " + user.getLogin());
-                        user.setAuth("Y");
-                        /* OBJECT_MAPPER.writeValue(new FileWriter("user.json"), user);*/
+                        /* currentPos выдает NullPointerException при авторизации, при авторизации не присваивается root ? */
+                        isAuth = true;
                         root = Paths.get(user.getRootDir());
                         currentPos = root.toString();
                         CurrentPositionMessage position = new CurrentPositionMessage();
                         position.setCurrentPos(currentPos);
+                        ctx.writeAndFlush(position);
                         break;
-                    }
-                    else authMessage.setText("Неверный логин или пароль");
+                    } else authMessage.setText("Неверный логин или пароль");
                 }
                 ctx.writeAndFlush(authMessage);
             }
         }
 
         if (msg instanceof FileRequestMessage) {
-            System.out.println("Запрос на отправку файла");
-            FileRequestMessage frm = (FileRequestMessage) msg;
-            final String path = frm.getPath();
-            Path file = Paths.get(path);
-            final File toFile = root.resolve(file).toFile();
-            accessFile = new RandomAccessFile(toFile, "r");
-            sendFile(ctx);
+            TextMessage message = new TextMessage();
+            if (isAuth == false) {
+                message.setText("Недостаточно прав для использования команды");
+            } else {
+                FileRequestMessage frm = (FileRequestMessage) msg;
+                final String path = frm.getPath();
+                Path file = Paths.get(path);
+                final File toFile = root.resolve(file).toFile();
+                accessFile = new RandomAccessFile(toFile, "r");
+                sendFile(ctx);
+            }
         }
 
         if (msg instanceof FileUploadMessage) {
-            FileUploadMessage upload = (FileUploadMessage) msg;
-            final String load = upload.getLoadFrom();
-            final File loadFrom = Paths.get(load).toFile();
-            accessFile = new RandomAccessFile(loadFrom, "r");
-            sendFile(ctx);
+            TextMessage message = new TextMessage();
+            if (isAuth == false) {
+                message.setText("Недостаточно прав для использования команды");
+            } else {
+                FileUploadMessage upload = (FileUploadMessage) msg;
+                final String load = upload.getLoadFrom();
+                final File loadFrom = Paths.get(load).toFile();
+                accessFile = new RandomAccessFile(loadFrom, "r");
+                sendFile(ctx);
+            }
         }
 
 
         if (msg instanceof mkdirMessage) {
             TextMessage message = new TextMessage();
-            if (!Files.exists(Paths.get("user.json"))) {
+            if (isAuth == false) {
                 message.setText("Недостаточно прав для использования команды");
             } else {
                 mkdirMessage mkdirMessage = (mkdirMessage) msg;
-                final UserMessage user = OBJECT_MAPPER.readValue(userFile, UserMessage.class);
                 Path userDir = Paths.get(mkdirMessage.getPath());
                 Path destination = root.resolve(userDir);
-                final File file = destination.toFile();
                 if (!Files.exists(destination)) {
                     Files.createDirectories(destination);
                     message.setText("Создана директория: " + destination);
-                    OBJECT_MAPPER.writeValue(new FileWriter("user.json"), user);
                 } else {
                     message.setText("Директория уже существует!");
                 }
-                ctx.writeAndFlush(message);
             }
+            ctx.writeAndFlush(message);
         }
 
         if (msg instanceof lsMessage) {
             TextMessage message = new TextMessage();
-            if (!Files.exists(Paths.get("user.json"))) {
+            if (isAuth == false) {
                 message.setText("Недостаточно прав для использования команды");
+                ctx.writeAndFlush(message);
             } else {
-                lsMessage ms = (lsMessage) msg;
-                final myFileIterator visitor = new myFileIterator();
-                Files.walkFileTree(root, visitor);
-                final List<String> fileName = visitor.getFileName();
-                for (String s : fileName) {
-                    message.setText(s);
-                    ctx.writeAndFlush(message);
+                lsMessage ls = (lsMessage) msg;
+                final String dirName = ls.getDirName();
+                System.out.println(dirName);
+                if (dirName.compareToIgnoreCase("home") == 0) {
+                    lsMode(ctx, root, message);
+                } else {
+                    final Path dest = root.resolve(Paths.get(dirName));
+                    lsMode(ctx, dest, message);
                 }
-
             }
         }
 
         if (msg instanceof rmMessage) {
             TextMessage message = new TextMessage();
-            if (!Files.exists(Paths.get("user.json"))) {
+            if (isAuth == false) {
                 message.setText("Недостаточно прав для использования команды");
             } else {
                 rmMessage rm = (rmMessage) msg;
@@ -178,15 +184,12 @@ public class FirstServerHandler extends SimpleChannelInboundHandler<Message> {
                 if (rmDir.toFile().isFile()) {
                     Files.delete(rmDir);
                     message.setText("Удален файл " + s);
-                    ctx.writeAndFlush(message);
                 } else {
-                    Files.delete(rmDir);
-                    message.setText("Удалена пустая папка " + s);
-                    ctx.writeAndFlush(message);
+                    Files.walkFileTree(rmDir, new myFileDeleter());
+                    message.setText("Удалена директория " + s);
                 }
             }
-
-
+            ctx.writeAndFlush(message);
         }
     }
 
@@ -221,6 +224,16 @@ public class FirstServerHandler extends SimpleChannelInboundHandler<Message> {
         }
     }
 
+    public void lsMode(ChannelHandlerContext ctx, Path path, TextMessage message) throws IOException {
+        final myFileIterator visitor = new myFileIterator();
+        Files.walkFileTree(path, Collections.singleton(FileVisitOption.FOLLOW_LINKS),1, visitor);
+        final List<String> fileName = visitor.getFileName();
+        for (String s : fileName) {
+            message.setText(s);
+            ctx.writeAndFlush(message);
+        }
+    }
+
     public void notAuthMsg(ChannelHandlerContext ctx, TextMessage msg) {
 
         msg.setText("auth - Авторизация " + "\n" +
@@ -248,14 +261,15 @@ public class FirstServerHandler extends SimpleChannelInboundHandler<Message> {
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws IOException {
+        if (userFile != null){
+            final UserMessage user = OBJECT_MAPPER.readValue(userFile, UserMessage.class);
+            /*OBJECT_MAPPER.writeValue(new FileWriter(userFile), user);*/
+            final Users u = OBJECT_MAPPER.readValue(new File("USERS.json"), Users.class);
+            u.getUsers().add(user);
+            OBJECT_MAPPER.writeValue(new FileWriter("USERS.json"), u);
+            Files.delete(userFile.toPath());
+        }
         System.out.println("Клиент отключился");
-        final UserMessage user = OBJECT_MAPPER.readValue(userFile, UserMessage.class);
-        user.setAuth("N");
-        OBJECT_MAPPER.writeValue(new FileWriter(userFile), user);
-        final Users u = OBJECT_MAPPER.readValue(new File("USERS.json"), Users.class);
-        u.getUsers().add(user);
-        OBJECT_MAPPER.writeValue(new FileWriter("USERS.json"), u);
-        Files.delete(userFile.toPath());
         if (accessFile != null) {
             accessFile.close();
         }

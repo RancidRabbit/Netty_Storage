@@ -14,12 +14,10 @@ public class UserMessage extends Message {
 
     private String rootDir;
 
-    private String auth;
 
-    public UserMessage(String login, String password, String auth) {
+    public UserMessage(String login, String password) {
         this.login = login;
         this.password = password;
-        this.auth = auth;
 
     }
 
@@ -44,13 +42,6 @@ public class UserMessage extends Message {
         return password;
     }
 
-    public String getAuth() {
-        return auth;
-    }
-
-    public void setAuth(String auth) {
-        this.auth = auth;
-    }
     public String getRootDir() {
         return rootDir;
     }

@@ -17,6 +17,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -26,7 +27,7 @@ import java.util.Scanner;
 
 public class Client {
 
-   private Channel channel;
+    private Channel channel;
 
     public static void main(String[] args) {
         new Client().start();
@@ -56,6 +57,7 @@ public class Client {
                                         private String download;
                                         private String userPosition;
                                         private String upload;
+
                                         @Override
                                         public void channelActive(ChannelHandlerContext ctx) throws Exception {
                                             new Thread(() -> {
@@ -76,9 +78,6 @@ public class Client {
                                                                 e.printStackTrace();
                                                             }
                                                             break;
-                                                        case "ls" :
-                                                            ls(ctx);
-                                                            break;
                                                         case "exit":
                                                             try {
                                                                 group.shutdownGracefully();
@@ -90,38 +89,68 @@ public class Client {
                                                             break;
                                                         default:
                                                             if (s.startsWith("mkdir")) {
-                                                                final String[] s1 = s.split(" ");
-                                                                final String dirPath = s1[1];
-                                                                mkdirMessage mkdirMessage = new mkdirMessage();
-                                                                mkdirMessage.setPath(dirPath);
-                                                                ctx.writeAndFlush(mkdirMessage);
+                                                                try {
+                                                                    mkdirCMD(ctx, s);
+                                                                    break;
+                                                                } catch (ArrayIndexOutOfBoundsException e) {
+                                                                    TextMessage text = new TextMessage();
+                                                                    text.setText(Constant.ANSI_RED + "Команда создания директории содержит следующий вид: " + "\n" +
+                                                                            "mkdir [название папки]" + Constant.ANSI_RESET);
+                                                                    ctx.writeAndFlush(text);
+                                                                }
+
                                                             }
-                                                             if (s.startsWith("rm")) {
-                                                                 final String[] s2 = s.split(" ");
-                                                                 final String rmPath = s2[1];
-                                                                rmMessage rm = new rmMessage();
-                                                                rm.setPath(rmPath);
-                                                                ctx.writeAndFlush(rm);
-                                                             }
-                                                             if (s.startsWith("download")) {
-                                                                 final String[] split = s.split(" ");
-                                                                 final String file = split[1];
-                                                                 download = split[2];
-                                                                 FileRequestMessage frm = new FileRequestMessage();
-                                                                 frm.setPath(file);
-                                                                 ctx.writeAndFlush(frm);
-                                                             }
-                                                             if (s.startsWith("upload")) {
-                                                                 final String[] strings = s.split(" ");
-                                                                 final String from = strings[1];
-                                                                 final String fileName = strings[2];
-                                                                 upload = userPosition.concat("\\").concat(fileName);
-                                                                 FileUploadMessage upload = new FileUploadMessage();
-                                                                 upload.setLoadFrom(from);
-                                                                 ctx.writeAndFlush(upload);
-                                                             }
-                                                             else  {
-                                                                System.out.println("Not such command");
+                                                            if (s.startsWith("ls")) {
+                                                                TextMessage text = new TextMessage();
+                                                                try {
+                                                                    ls(ctx, s);
+                                                                    break;
+                                                                } catch (ArrayIndexOutOfBoundsException e) {
+
+                                                                    text.setText(Constant.ANSI_RED + "Команда просмотра файлов в директории содержит следующий вид: " + "\n" +
+                                                                            "ls [Home] для просмотра корневой папки или ls [название папки в вашей директории]" + Constant.ANSI_RESET);
+                                                                    ctx.writeAndFlush(text);
+                                                                    /*break;*/
+                                                                } catch (NoSuchFileException e) {
+                                                                    text.setText(Constant.ANSI_RED + "Проверьте правильность пути" + Constant.ANSI_RESET);
+                                                                    ctx.writeAndFlush(text);
+                                                                }
+                                                            }
+                                                            if (s.startsWith("rm")) {
+                                                                try {
+                                                                    deleteCMD(ctx, s);
+                                                                    break;
+                                                                } catch (ArrayIndexOutOfBoundsException e) {
+                                                                    TextMessage text = new TextMessage();
+                                                                    text.setText(Constant.ANSI_RED + "Команда удаления содержит следующий вид: " + "\n" +
+                                                                            "rm [название файла/директории]" + Constant.ANSI_RESET);
+                                                                    ctx.writeAndFlush(text);
+                                                                    /*break;*/
+                                                                }
+                                                            }
+                                                            if (s.startsWith("download")) {
+                                                                try {
+                                                                    downloadCMD(ctx, s);
+                                                                    break;
+                                                                } catch (ArrayIndexOutOfBoundsException e) {
+                                                                    TextMessage text = new TextMessage();
+                                                                    text.setText(Constant.ANSI_RED + "Команда загрузки файла c сервера содержит следующий вид: " + "\n" +
+                                                                            "download [book.txt] [C:\\Users\\newBook.txt]" + Constant.ANSI_RESET);
+                                                                    ctx.writeAndFlush(text);
+                                                                }
+                                                            }
+                                                            if (s.startsWith("upload")) {
+                                                                try {
+                                                                    uploadCMD(ctx, s);
+                                                                    break;
+                                                                } catch (ArrayIndexOutOfBoundsException e) {
+                                                                    TextMessage text = new TextMessage();
+                                                                    text.setText(Constant.ANSI_RED + "Команда загрузки файла на сервер содержит следующий вид: " + "\n" +
+                                                                            "upload [C:\\Users\\book.txt] [newBook.txt]" + Constant.ANSI_RESET);
+                                                                    ctx.writeAndFlush(text);
+                                                                }
+                                                            } else {
+                                                                System.out.println("Такой команды не существует. Вызовите [help] для списка доступных команд");
                                                             }
 
                                                     }
@@ -138,7 +167,7 @@ public class Client {
                                                 downloadFile(ctx, msg, download);
                                             }
                                             if (msg instanceof FileContentMessage) {
-                                                downloadFile(ctx,msg, upload);
+                                                downloadFile(ctx, msg, upload);
                                             }
 
                                             if (msg instanceof TextMessage) {
@@ -162,7 +191,7 @@ public class Client {
                                                 }
                                             } catch (IOException e) {
                                                 System.out.println(Constant.ANSI_RED + "Укажите действующую директорию для копирования и название для файла" + "\n" +
-                                                                   "C:\\MyFiles\\Read.txt" + Constant.ANSI_RESET);
+                                                        "C:\\MyFiles\\Read.txt" + Constant.ANSI_RESET);
 
                                             }
                                         }
@@ -175,7 +204,6 @@ public class Client {
                                             UserMessage userMessage = new UserMessage();
                                             userMessage.setLogin(login);
                                             userMessage.setPassword(password);
-                                            userMessage.setAuth("Y");
                                             Path userFile = Paths.get(userMessage.getLogin().concat(".json"));
                                             if (!Files.exists(userFile)) {
                                                 Files.createFile(userFile);
@@ -200,18 +228,55 @@ public class Client {
                                             System.out.println(message.getText());
                                         }
 
-                                        public void ls(ChannelHandlerContext ctx) {
-                                           lsMessage ls = new lsMessage();
-                                           ctx.writeAndFlush(ls);
+                                        public void ls(ChannelHandlerContext ctx, String s) throws ArrayIndexOutOfBoundsException, NoSuchFileException {
+                                            final String[] s1 = s.split(" ");
+                                            final String dirName = s1[1];
+                                            lsMessage ls = new lsMessage();
+                                            ls.setDirName(dirName);
+                                            ctx.writeAndFlush(ls);
+                                        }
+
+                                        public void deleteCMD(ChannelHandlerContext ctx, String s) throws ArrayIndexOutOfBoundsException {
+                                            final String[] s2 = s.split(" ");
+                                            final String rmPath = s2[1];
+                                            rmMessage rm = new rmMessage();
+                                            rm.setPath(rmPath);
+                                            ctx.writeAndFlush(rm);
+                                        }
+
+                                        public void mkdirCMD(ChannelHandlerContext ctx, String s) throws ArrayIndexOutOfBoundsException {
+                                            final String[] s1 = s.split(" ");
+                                            final String dirPath = s1[1];
+                                            mkdirMessage mkdirMessage = new mkdirMessage();
+                                            mkdirMessage.setPath(dirPath);
+                                            ctx.writeAndFlush(mkdirMessage);
+                                        }
+
+                                        public void downloadCMD(ChannelHandlerContext ctx, String s) throws ArrayIndexOutOfBoundsException {
+                                            final String[] split = s.split(" ");
+                                            final String file = split[1];
+                                            download = split[2];
+                                            FileRequestMessage frm = new FileRequestMessage();
+                                            frm.setPath(file);
+                                            ctx.writeAndFlush(frm);
                                         }
 
 
+                                        public void uploadCMD(ChannelHandlerContext ctx, String s) throws ArrayIndexOutOfBoundsException {
+                                            final String[] strings = s.split(" ");
+                                            final String from = strings[1];
+                                            final String fileName = strings[2];
+                                            upload = userPosition.concat("\\").concat(fileName);
+                                            FileUploadMessage upload = new FileUploadMessage();
+                                            upload.setLoadFrom(from);
+                                            ctx.writeAndFlush(upload);
+                                        }
                                     }
                             );
                         }
                     });
 
-            System.out.println("Client started");
+            System.out.println("Вы успешно подключились на сервер");
             channel = bootstrap.connect("localhost", 9090).sync().channel();
 
 

@@ -31,7 +31,7 @@ public class Server {
 
     private final int port;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-
+    private File usersList = new File("USERS.json");
 
     public static void main(String[] args) throws InterruptedException, IOException {
         new Server(9090).start();
@@ -67,15 +67,22 @@ public class Server {
 
             Channel channel = server.bind(port).sync().channel();
 
-            System.out.println("Server started");
+            System.out.println("Сервер запущен");
             Users users = new Users();
             users.start();
-            OBJECT_MAPPER.writeValue(new FileWriter("USERS.json"), users);
-            channel.closeFuture().sync();
+           if (!isFileEmpty(usersList)) {
+               users = OBJECT_MAPPER.readValue((usersList), Users.class);
+           }
+           OBJECT_MAPPER.writeValue((usersList), users);
+           channel.closeFuture().sync();
         } finally {
             bossGroup.shutdownGracefully();
             workerGroup.shutdownGracefully();
 
         }
+    }
+
+    public boolean isFileEmpty(File file) {
+        return file.length() == 0;
     }
 }
