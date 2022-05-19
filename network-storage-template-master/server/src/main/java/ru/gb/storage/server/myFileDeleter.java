@@ -9,20 +9,17 @@ import java.nio.file.attribute.BasicFileAttributes;
 
 public class myFileDeleter extends SimpleFileVisitor<Path> {
 
+    private String fileToBeDeleted;
+
+    public myFileDeleter(String fileToBeDeleted) {
+        this.fileToBeDeleted = fileToBeDeleted;
+    }
 
     @Override
     public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-        System.out.println(file.getFileName());
-        Files.delete(file);
+        if (fileToBeDeleted.matches(file.getFileName().toString())) {
+            Files.delete(file);
+        }
         return FileVisitResult.CONTINUE;
     }
-
-    @Override
-    public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
-        System.out.println(dir.getFileName());
-        Files.delete(dir);
-        return FileVisitResult.CONTINUE;
-    }
-
-
 }

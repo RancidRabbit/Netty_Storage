@@ -11,21 +11,11 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
 import io.netty.handler.codec.LengthFieldPrepender;
-import io.netty.handler.codec.string.StringDecoder;
-import io.netty.handler.codec.string.StringEncoder;
 import ru.gb.storage.commons.handler.JsonDecoder;
-import ru.gb.storage.commons.handler.JsonDecoderLog;
 import ru.gb.storage.commons.handler.JsonEncoder;
-import ru.gb.storage.commons.message.UserMessage;
 
 import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.List;
 
 public class Server {
 
@@ -81,7 +71,7 @@ public class Server {
 
         }
     }
-
+    /* Вынести это метод в модуль commons */
     public boolean isFileEmpty(File file) {
         return file.length() == 0;
     }

@@ -1,6 +1,5 @@
 package ru.gb.storage.client;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -13,16 +12,11 @@ import ru.gb.storage.commons.handler.JsonDecoder;
 import ru.gb.storage.commons.handler.JsonEncoder;
 import ru.gb.storage.commons.message.*;
 
-import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
-import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.Scanner;
 
 public class Client {
@@ -33,7 +27,7 @@ public class Client {
         new Client().start();
     }
 
-    public void start() {
+    public void start() throws NullPointerException {
         final NioEventLoopGroup group = new NioEventLoopGroup(1);
         try {
             Bootstrap bootstrap = new Bootstrap()
@@ -52,7 +46,7 @@ public class Client {
                                     new LengthFieldPrepender(3),
                                     new JsonDecoder(),
                                     new JsonEncoder(),
-                                    new SimpleChannelInboundHandler<Message>() {
+                                    new SimpleChannelInboundHandler<Message>()  {
                                         Scanner sc = new Scanner(System.in);
                                         private String download;
                                         private String userPosition;
@@ -97,6 +91,7 @@ public class Client {
                                                                     text.setText(Constant.ANSI_RED + "Команда создания директории содержит следующий вид: " + "\n" +
                                                                             "mkdir [название папки]" + Constant.ANSI_RESET);
                                                                     ctx.writeAndFlush(text);
+                                                                    break;
                                                                 }
 
                                                             }
@@ -110,10 +105,7 @@ public class Client {
                                                                     text.setText(Constant.ANSI_RED + "Команда просмотра файлов в директории содержит следующий вид: " + "\n" +
                                                                             "ls [Home] для просмотра корневой папки или ls [название папки в вашей директории]" + Constant.ANSI_RESET);
                                                                     ctx.writeAndFlush(text);
-                                                                    /*break;*/
-                                                                } catch (NoSuchFileException e) {
-                                                                    text.setText(Constant.ANSI_RED + "Проверьте правильность пути" + Constant.ANSI_RESET);
-                                                                    ctx.writeAndFlush(text);
+                                                                    break;
                                                                 }
                                                             }
                                                             if (s.startsWith("rm")) {
@@ -125,7 +117,7 @@ public class Client {
                                                                     text.setText(Constant.ANSI_RED + "Команда удаления содержит следующий вид: " + "\n" +
                                                                             "rm [название файла/директории]" + Constant.ANSI_RESET);
                                                                     ctx.writeAndFlush(text);
-                                                                    /*break;*/
+                                                                    break;
                                                                 }
                                                             }
                                                             if (s.startsWith("download")) {
@@ -137,6 +129,12 @@ public class Client {
                                                                     text.setText(Constant.ANSI_RED + "Команда загрузки файла c сервера содержит следующий вид: " + "\n" +
                                                                             "download [book.txt] [C:\\Users\\newBook.txt]" + Constant.ANSI_RESET);
                                                                     ctx.writeAndFlush(text);
+                                                                    break;
+                                                                } catch (NullPointerException e) {
+                                                                    TextMessage text = new TextMessage();
+                                                                    text.setText(Constant.ANSI_RED + "Директория, которую вы ввели не существует! " + Constant.ANSI_RESET);
+                                                                    ctx.writeAndFlush(text);
+                                                                    break;
                                                                 }
                                                             }
                                                             if (s.startsWith("upload")) {
@@ -148,6 +146,12 @@ public class Client {
                                                                     text.setText(Constant.ANSI_RED + "Команда загрузки файла на сервер содержит следующий вид: " + "\n" +
                                                                             "upload [C:\\Users\\book.txt] [newBook.txt]" + Constant.ANSI_RESET);
                                                                     ctx.writeAndFlush(text);
+                                                                    break;
+                                                                } catch (FileNotFoundException e) {
+                                                                    TextMessage text = new TextMessage();
+                                                                    text.setText(Constant.ANSI_RED + "Указанный файл для загрузки не найден или указан неверный формат директории" + Constant.ANSI_RESET);
+                                                                    ctx.writeAndFlush(text);
+                                                                    break;
                                                                 }
                                                             } else {
                                                                 System.out.println("Такой команды не существует. Вызовите [help] для списка доступных команд");
@@ -171,7 +175,7 @@ public class Client {
                                             }
 
                                             if (msg instanceof TextMessage) {
-                                                readText(ctx, msg);
+                                                readText(msg);
                                             }
                                             if (msg instanceof CurrentPositionMessage) {
                                                 CurrentPositionMessage position = (CurrentPositionMessage) msg;
@@ -188,10 +192,13 @@ public class Client {
                                                 accessFile.write(fcm.getContent());
                                                 if (fcm.isLast()) {
                                                     download = null;
+                                                    System.out.println("Загрузка успешно завершена");
                                                 }
-                                            } catch (IOException e) {
-                                                System.out.println(Constant.ANSI_RED + "Укажите действующую директорию для копирования и название для файла" + "\n" +
-                                                        "C:\\MyFiles\\Read.txt" + Constant.ANSI_RESET);
+                                            } catch (IOException e ) {
+                                                System.out.println(Constant.ANSI_RED + "Директория для скачивания не найдена. Проверьте правильность введенных данных"
+                                                        + Constant.ANSI_RESET);
+
+                                            } catch (NullPointerException e) {
 
                                             }
                                         }
@@ -204,12 +211,7 @@ public class Client {
                                             UserMessage userMessage = new UserMessage();
                                             userMessage.setLogin(login);
                                             userMessage.setPassword(password);
-                                            Path userFile = Paths.get(userMessage.getLogin().concat(".json"));
-                                            if (!Files.exists(userFile)) {
-                                                Files.createFile(userFile);
-                                            }
                                             ctx.writeAndFlush(userMessage);
-                                            System.out.println(login + ", успешно зарегестрирован!");
                                         }
 
                                         public void authUser(ChannelHandlerContext ctx) {
@@ -223,12 +225,12 @@ public class Client {
                                             ctx.writeAndFlush(authMessage);
                                         }
 
-                                        public void readText(ChannelHandlerContext ctx, Message msg) {
+                                        public void readText(Message msg) {
                                             TextMessage message = (TextMessage) msg;
                                             System.out.println(message.getText());
                                         }
 
-                                        public void ls(ChannelHandlerContext ctx, String s) throws ArrayIndexOutOfBoundsException, NoSuchFileException {
+                                        public void ls(ChannelHandlerContext ctx, String s) throws ArrayIndexOutOfBoundsException {
                                             final String[] s1 = s.split(" ");
                                             final String dirName = s1[1];
                                             lsMessage ls = new lsMessage();
@@ -252,24 +254,29 @@ public class Client {
                                             ctx.writeAndFlush(mkdirMessage);
                                         }
 
-                                        public void downloadCMD(ChannelHandlerContext ctx, String s) throws ArrayIndexOutOfBoundsException {
+                                        public void downloadCMD(ChannelHandlerContext ctx, String s) throws ArrayIndexOutOfBoundsException, NullPointerException {
                                             final String[] split = s.split(" ");
                                             final String file = split[1];
-                                            download = split[2];
-                                            FileRequestMessage frm = new FileRequestMessage();
-                                            frm.setPath(file);
-                                            ctx.writeAndFlush(frm);
+                                            if (Paths.get(split[2]).getParent().toFile().isDirectory()) {
+                                                download = split[2];
+                                                FileRequestMessage frm = new FileRequestMessage();
+                                                frm.setPath(file);
+                                                ctx.writeAndFlush(frm);
+                                            } else throw new NullPointerException();
+
                                         }
 
 
-                                        public void uploadCMD(ChannelHandlerContext ctx, String s) throws ArrayIndexOutOfBoundsException {
+                                        public void uploadCMD(ChannelHandlerContext ctx, String s) throws ArrayIndexOutOfBoundsException, FileNotFoundException {
                                             final String[] strings = s.split(" ");
                                             final String from = strings[1];
-                                            final String fileName = strings[2];
-                                            upload = userPosition.concat("\\").concat(fileName);
-                                            FileUploadMessage upload = new FileUploadMessage();
-                                            upload.setLoadFrom(from);
-                                            ctx.writeAndFlush(upload);
+                                            if (Paths.get(from).toFile().isFile()) {
+                                                final String fileName = strings[2];
+                                                upload = userPosition.concat("\\").concat(fileName);
+                                                FileUploadMessage upload = new FileUploadMessage();
+                                                upload.setLoadFrom(from);
+                                                ctx.writeAndFlush(upload);
+                                            } else throw new FileNotFoundException();
                                         }
                                     }
                             );
