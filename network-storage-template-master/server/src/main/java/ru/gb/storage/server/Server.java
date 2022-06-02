@@ -11,27 +11,17 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
 import io.netty.handler.codec.LengthFieldPrepender;
-import io.netty.handler.codec.string.StringDecoder;
-import io.netty.handler.codec.string.StringEncoder;
 import ru.gb.storage.commons.handler.JsonDecoder;
-import ru.gb.storage.commons.handler.JsonDecoderLog;
 import ru.gb.storage.commons.handler.JsonEncoder;
-import ru.gb.storage.commons.message.UserMessage;
 
 import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.List;
 
 public class Server {
 
     private final int port;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-
+    private File usersList = new File("C:\\Server\\USERS.json");
 
     public static void main(String[] args) throws InterruptedException, IOException {
         new Server(9090).start();
@@ -67,15 +57,22 @@ public class Server {
 
             Channel channel = server.bind(port).sync().channel();
 
-            System.out.println("Server started");
+            System.out.println("Сервер запущен");
             Users users = new Users();
             users.start();
-            OBJECT_MAPPER.writeValue(new FileWriter("USERS.json"), users);
-            channel.closeFuture().sync();
+           if (!isFileEmpty(usersList)) {
+               users = OBJECT_MAPPER.readValue((usersList), Users.class);
+           }
+           OBJECT_MAPPER.writeValue((usersList), users);
+           channel.closeFuture().sync();
         } finally {
             bossGroup.shutdownGracefully();
             workerGroup.shutdownGracefully();
 
         }
+    }
+    /* Вынести это метод в модуль commons */
+    public boolean isFileEmpty(File file) {
+        return file.length() == 0;
     }
 }

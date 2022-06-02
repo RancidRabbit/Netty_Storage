@@ -11,11 +11,7 @@ import java.util.List;
 public class myFileIterator extends SimpleFileVisitor<Path> {
 
 
-
-
-
-  private List<String> fileName = new ArrayList<>();
-
+    private List<String> fileName = new ArrayList<>();
 
 
     public List<String> getFileName() {
@@ -25,8 +21,10 @@ public class myFileIterator extends SimpleFileVisitor<Path> {
 
     @Override
     public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-        final String s = file.getFileName().toString();
-        fileName.add(s);
+        if (file.toFile().isFile()) {
+            final String s = file.getFileName().toString();
+            fileName.add(s);
+        }
         return FileVisitResult.CONTINUE;
     }
 }
