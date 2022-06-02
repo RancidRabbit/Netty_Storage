@@ -21,7 +21,7 @@ public class Server {
 
     private final int port;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private File usersList = new File("USERS.json");
+    private File usersList = new File("C:\\Server\\USERS.json");
 
     public static void main(String[] args) throws InterruptedException, IOException {
         new Server(9090).start();

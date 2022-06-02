@@ -19,7 +19,7 @@ public class FirstServerHandler extends SimpleChannelInboundHandler<Message> {
     private Path root;
     private String currentPos;
     private boolean isAuth = false;
-    private File users = new File("USERS.json");
+    private File users = new File("C:\\Server\\USERS.json");
 
 
     @Override
@@ -80,7 +80,7 @@ public class FirstServerHandler extends SimpleChannelInboundHandler<Message> {
                 AuthMessage message = (AuthMessage) msg;
                 final String incomePassword = message.getPassword();
                 final String incomeLogin = message.getLogin();
-                final Users users = OBJECT_MAPPER.readValue(new File("USERS.json"), Users.class);
+                final Users users = OBJECT_MAPPER.readValue(new File("C:\\Server\\USERS.json"), Users.class);
                 TextMessage authMessage = new TextMessage();
                 for (UserMessage user : users.getUsers()) {
                     if (incomeLogin.matches(user.getLogin()) && incomePassword.matches(user.getPassword())) {
@@ -239,9 +239,9 @@ public class FirstServerHandler extends SimpleChannelInboundHandler<Message> {
         userMessage.setRootDir(root.toString());
         CurrentPositionMessage position = new CurrentPositionMessage();
         position.setCurrentPos(currentPos);
-        final Users u = OBJECT_MAPPER.readValue(new File("USERS.json"), Users.class);
+        final Users u = OBJECT_MAPPER.readValue(new File("C:\\Server\\USERS.json"), Users.class);
         u.getUsers().add(userMessage);
-        OBJECT_MAPPER.writeValue(new FileWriter("USERS.json"), u);
+        OBJECT_MAPPER.writeValue(new FileWriter("C:\\Server\\USERS.json"), u);
         ctx.writeAndFlush(position);
     }
 
